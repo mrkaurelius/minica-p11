@@ -107,6 +107,7 @@ func makeKey(filename string) (*rsa.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	der := x509.MarshalPKCS1PrivateKey(key)
 	if err != nil {
 		return nil, err
