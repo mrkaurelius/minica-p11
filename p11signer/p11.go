@@ -15,21 +15,31 @@ var tokenPin string = "1234"
 var p11 *pkcs11.Ctx
 var session pkcs11.SessionHandle
 
-func init() {
+// Init p11 signer
+func Init() (err error) {
 	fmt.Println("initing p11 module")
+
 	p11 = pkcs11.New(modulePath)
-	err := p11.Initialize()
+	err = p11.Initialize()
 	if err != nil {
 		panic(err)
 	}
 
 	slots, err := p11.GetSlotList(true)
-	handleFatal(err)
+	if err != nil {
+		return err
+	}
 	slotId := uint(slots[0])
 	session, err = p11.OpenSession(slotId, pkcs11.CKF_SERIAL_SESSION|pkcs11.CKF_RW_SESSION)
-	handleFatal(err)
+	if err != nil {
+		return err
+	}
 	err = p11.Login(session, pkcs11.CKU_USER, tokenPin)
-	handleFatal(err)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func Finalize() {
@@ -39,24 +49,33 @@ func Finalize() {
 	defer p11.Finalize()
 }
 
-func getPublicKey(label string) rsa.PublicKey {
+// Check error!
+func getPublicKey(label string) (p rsa.PublicKey, err error) {
 	class := pkcs11.CKO_PUBLIC_KEY
 	findTemplate := []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, class)}
-	err := p11.FindObjectsInit(session, findTemplate)
-	handleFatal(err)
+	err = p11.FindObjectsInit(session, findTemplate)
+	if err != nil {
+		return p, err
+	}
 	oh, _, err := p11.FindObjects(session, 1)
-	handleFatal(err)
+	if err != nil {
+		return p, err
+	}
 	err = p11.FindObjectsFinal(session)
-	handleFatal(err)
+	if err != nil {
+		return p, err
+	}
 	objectAttrs, err := p11.GetAttributeValue(session, oh[0], []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_ID, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_MODULUS, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, nil),
 	})
-	handleFatal(err)
+	if err != nil {
+		return p, err
+	}
 
 	// ! not sure about byte serialisations
 	var pe int
@@ -69,34 +88,38 @@ func getPublicKey(label string) rsa.PublicKey {
 			mod = new(big.Int).SetBytes(a.Value)
 		}
 	}
-	pubkey := rsa.PublicKey{N: mod, E: pe}
-	return pubkey
+
+	p = rsa.PublicKey{N: mod, E: pe}
+	return p, nil
 }
 
-func sign(label string, message []byte) (sig []byte) {
+// TODO return error
+func signP11(label string, message []byte) (sig []byte, err error) {
 	template := []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PRIVATE_KEY)}
-	err := p11.FindObjectsInit(session, template)
-	handleFatal(err)
+	err = p11.FindObjectsInit(session, template)
+	if err != nil {
+		return nil, err
+	}
 	ohs, _, err := p11.FindObjects(session, 1)
-	handleFatal(err)
+	if err != nil {
+		return nil, err
+	}
 	// fmt.Printf("ohs: %+v\n", ohs)
 	// fmt.Printf("ohsLenght: %+v\n", len(ohs))
-	handleFatal(err)
 	err = p11.FindObjectsFinal(session)
-	handleFatal(err)
-	err = p11.SignInit(session, []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_SHA256_RSA_PKCS, nil)}, ohs[0])
-	handleFatal(err)
-	signature, err := p11.Sign(session, message)
-	fmt.Printf("signature: %x\n", signature)
-	handleFatal(err)
-	return signature
-}
-
-func handleFatal(err error) {
 	if err != nil {
-		fmt.Println(err)
-		panic(err)
+		return nil, err
 	}
+	err = p11.SignInit(session, []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_SHA256_RSA_PKCS, nil)}, ohs[0])
+	if err != nil {
+		return nil, err
+	}
+	signature, err := p11.Sign(session, message)
+	// fmt.Printf("signature: %x\n", signature)
+	if err != nil {
+		return nil, err
+	}
+	return signature, nil
 }

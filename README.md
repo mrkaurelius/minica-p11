@@ -1,3 +1,6 @@
 # minica-p11
 
-WIP.
+Development tools
+
+- pkcs11-tool
+- softhsm2-util

@@ -1,4 +1,4 @@
-package p11hello
+package pg
 
 import (
 	"fmt"
@@ -8,9 +8,12 @@ import (
 
 var modulePath string = "/usr/lib/softhsm/libsofthsm2.so"
 var tokenPin string = "1234"
+var pKeyLabel string = "testkey"
 var p11 *pkcs11.Ctx
 
-func init() {
+func P11HappyPath() {
+	fmt.Println("Initing p11")
+
 	p11 = pkcs11.New(modulePath)
 	err := p11.Initialize()
 	if err != nil {
@@ -19,11 +22,6 @@ func init() {
 
 	defer p11.Destroy()
 	defer p11.Finalize()
-}
-
-// TODO happy path'i calistir
-func P11HappyPath() {
-	// TODO check if softhsm installed
 
 	info, err := p11.GetInfo()
 	handleError(err)
@@ -65,7 +63,7 @@ func P11HappyPath() {
 	class := pkcs11.CKO_PRIVATE_KEY
 
 	template := []*pkcs11.Attribute{
-		pkcs11.NewAttribute(pkcs11.CKA_LABEL, "test"),
+		pkcs11.NewAttribute(pkcs11.CKA_LABEL, pKeyLabel),
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, class)}
 	err = p11.FindObjectsInit(session, template)
 	handleError(err)
